@@ -39,7 +39,7 @@ const MQTTNotification *MQTTHelper::loop()
         lastMsg.payload = nullptr;
     }
 
-    if (millis() - lastMillis > 10)
+    if (millis() - lastMillis > 100)
     {
         lastMillis = millis();
 
@@ -66,7 +66,39 @@ bool MQTTHelper::send(const char *topic, const char *payload, bool retained, MQT
 
 void MQTTHelper::subscribe(const char *topic, MQTTQOS qos)
 {
+    uint8_t i;
+    for (i = 0; i < MAX_TOPICS; i++)
+    {
+        if (subscriptions[i] == nullptr)
+        {
+            subscriptions[i] = (MQTTSubscription *)malloc(sizeof(MQTTSubscription));
+            subscriptions[i]->topic = topic;
+            subscriptions[i]->qos = qos;
+            break;
+        }
+    }
+    if (i == MAX_TOPICS)
+    {
+        SerialPrintln("MQTT: MAX_TOPICS exceeded!");
+        return;
+    }
+
     client.subscribe(topic, qos);
+}
+
+void MQTTHelper::resubscribe()
+{
+    for (uint8_t i = 0; i < MAX_TOPICS; i++)
+    {
+        if (subscriptions[i] == nullptr)
+        {
+            break;
+        }
+        else
+        {
+            client.subscribe(subscriptions[i]->topic, subscriptions[i]->qos);
+        }
+    }
 }
 
 void MQTTHelper::startConnection(char *ssid, const char *pass, const char *mqtt_host, const char *mqtt_user, const char *mqtt_pass, const char *mqtt_client)
@@ -74,6 +106,9 @@ void MQTTHelper::startConnection(char *ssid, const char *pass, const char *mqtt_
     this->mqtt_client = mqtt_client;
     this->mqtt_pass = mqtt_pass;
     this->mqtt_user = mqtt_user;
+
+    this->wifi_ssid = ssid;
+    this->wifi_pass = pass;
 
     WiFi.begin(ssid, pass);
     WiFi.setAutoReconnect(true);
@@ -85,19 +120,41 @@ void MQTTHelper::startConnection(char *ssid, const char *pass, const char *mqtt_
 
 void MQTTHelper::connect()
 {
-    SerialPrint("checking wifi...");
-    while (WiFi.status() != WL_CONNECTED)
+    if (millis() - lastConnectAttemptMillis < RECONNECT_FAIL_DELAY && lastConnectAttemptMillis != 0)
     {
-        SerialPrint(".");
-        delay(1000);
+        return;
+    }
+    lastConnectAttemptMillis = millis();
+
+    wl_status_t wifiStatus = WiFi.status();
+    if (wifiStatus != WL_CONNECTED)
+    {
+        if (wifiStatus == WL_NO_SSID_AVAIL || wifiStatus == WL_IDLE_STATUS)
+        {
+            return;
+        }
+        else
+        {
+            SerialPrintln("WiFi connect failed, retrying!");
+            WiFi.begin(this->wifi_ssid, this->wifi_pass);
+            return;
+        }
     }
 
-    SerialPrint("\nconnecting to MQTT...");
-    while (!client.connect(mqtt_client, mqtt_user, mqtt_pass))
+    SerialPrint("Connecting to MQTT... ");
+    for (uint8_t failCount = 0; failCount < RECONNECT_ATTEMPTS && !client.connect(mqtt_client, mqtt_user, mqtt_pass); failCount++)
     {
         SerialPrint(".");
-        delay(1000);
+        delay(RECONNECT_ATTEMPT_DELAY);
     }
 
-    SerialPrintln("\nconnected!");
+    if (client.connected())
+    {
+        resubscribe();
+        SerialPrintln("\nConnected!");
+    }
+    else
+    {
+        SerialPrintln("\nConnect Failed!");
+    }
 }

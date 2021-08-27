@@ -5,6 +5,11 @@
 #include <WiFi.h>
 #include <MQTT.h> //https://github.com/256dpi/arduino-mqtt
 
+#define MAX_TOPICS 10
+#define RECONNECT_FAIL_DELAY 1000 * 60
+#define RECONNECT_ATTEMPTS 3
+#define RECONNECT_ATTEMPT_DELAY 100
+
 enum MQTTQOS
 {
     AT_MOST_ONCE = 0,
@@ -16,6 +21,12 @@ struct MQTTNotification
 {
     char *topic;
     char *payload;
+};
+
+struct MQTTSubscription
+{
+    const char *topic;
+    MQTTQOS qos;
 };
 
 /** Combination MQTT and Wifi Helper */
@@ -49,10 +60,17 @@ private:
     const char *mqtt_pass;
     const char *mqtt_client;
 
+    const char *wifi_pass;
+    const char *wifi_ssid;
+
     unsigned long lastMillis = 0;
+    unsigned long lastConnectAttemptMillis = 0;
+
+    MQTTSubscription *subscriptions[MAX_TOPICS];
 
     MQTTHelper();
     void connect();
+    void resubscribe();
 };
 
 #endif
