@@ -1,7 +1,12 @@
 #include "MQTTHelper.h"
 
+#ifdef DEBUG
 #define SerialPrintln(msg) Serial.println(msg)
 #define SerialPrint(msg) Serial.print(msg)
+#else
+#define SerialPrintln(msg)
+#define SerialPrint(msg)
+#endif
 
 void messageReceived(String &topic, String &payload)
 {
